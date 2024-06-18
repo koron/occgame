@@ -123,19 +123,68 @@ func (g *Occgame) Classify() map[uint8][]Pos {
 	return m
 }
 
+// isAdjacent checks two Pos are adjacent (隣接してたらtrue)
 func isAdjacent(a, b Pos) bool {
 	return (a.Y == b.Y && a.X+1 == b.X) || (a.X == b.X && a.Y+1 == b.Y)
 }
 
-func (g *Occgame) CanConnect(a, b Pos) bool {
+// emptyHorz checks for horizontal empties
+func (g *Occgame) emptyHorz(y, x0, x1 int) bool {
+	if x0 > x1 {
+		x0, x1 = x1, x0
+	}
+	for x := x0; x <= x1; x++ {
+		if g.Board[y*g.W+x] != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// emptyVert checks for vertical empties
+func (g *Occgame) emptyVert(x, y0, y1 int) bool {
+	if y0 > y1 {
+		y0, y1 = y1, y0
+	}
+	for y := y0; y <= y1; y++ {
+		if g.Board[x+y*g.W] != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *Occgame) lookFarVert(p Pos) (up, down int) {
+	up, down = p.Y, p.Y
+	for up > 0 && g.get(Pos{X: p.X, Y: up - 1}) == 0 {
+		up--
+	}
+	for down < g.H-1 && g.get(Pos{X: p.X, Y: down + 1}) == 0 {
+		down++
+	}
+	return up, down
+}
+
+func (g *Occgame) lookFarHorz(p Pos) (left, right int) {
+	left, right = p.X, p.X
+	for left > 0 && g.get(Pos{X: left - 1, Y: p.Y}) == 0 {
+		left--
+	}
+	for right < g.W-1 && g.get(Pos{X: right - 1, Y: p.Y}) == 0 {
+		right++
+	}
+	return left, right
+}
+
+func (g *Occgame) CanConnect(a, b Pos) []Pos {
 	// If they point to the same location, they will not be able to connect.
 	if a == b {
-		return false
+		return nil
 	}
 	// If they point different tokens, they will not be able to connect.
 	ta, tb := g.get(a), g.get(b)
 	if ta == 0 || ta != tb {
-		return false
+		return nil
 	}
 
 	// Swap points if needed: A should lefter than B, or upper than B.
@@ -145,12 +194,70 @@ func (g *Occgame) CanConnect(a, b Pos) bool {
 
 	// If A and B are adjacent, they can obviously be connected.
 	if isAdjacent(a, b) {
-		return true
+		return []Pos{a, b}
 	}
 
-	// TODO:
+	// Check two points can be connected with a straight line.
+	if a.Y == b.Y {
+		// Check the horizontal.
+		if g.emptyHorz(a.Y, a.X, b.X) {
+			return []Pos{a, b}
+		}
+	}
+	if a.X == b.X {
+		// Check the vertical.
+		if g.emptyVert(a.X, a.Y, b.Y) {
+			return []Pos{a, b}
+		}
+	}
 
-	return false
+	// Check two points can be connected with two straight lines. (single corner)
+	if a.X != b.X && a.Y != b.Y {
+		if g.emptyHorz(a.Y, a.X+1, b.X) && ((a.Y < b.Y && g.emptyVert(b.X, a.Y+1, b.Y)) || (a.Y > b.Y && g.emptyVert(b.X, b.Y, a.Y-1))) {
+			return []Pos{a, {X: b.X, Y: a.Y}, b}
+		}
+		if g.emptyHorz(b.Y, a.X+1, b.X) && ((a.Y < b.Y && g.emptyVert(a.X, a.Y+1, b.Y)) || (a.Y > b.Y && g.emptyVert(a.X, b.Y, a.Y-1))) {
+			return []Pos{a, {X: a.X, Y: b.Y}, b}
+		}
+	}
+
+	// Check two points can be connected with two straight lines. (double corner)
+	if a.X != b.X {
+		// 上下方向にチェック
+		au, ad := g.lookFarVert(a)
+		bu, bd := g.lookFarVert(b)
+		up := max(au, bu)
+		down := min(ad, bd)
+		if up < down {
+			// TODO:
+			// Check links outside of the box.
+			if up == 0 {
+				return []Pos{a, {X: a.X, Y: -1}, {X: b.X, Y: -1}, b}
+			}
+			if down == g.H-1 {
+				return []Pos{a, {X: a.X, Y: g.W}, {X: b.X, Y: g.W}, b}
+			}
+		}
+	}
+	if a.Y != b.Y {
+		// 左右方向にチェック
+		al, ar := g.lookFarHorz(a)
+		bl, br := g.lookFarHorz(b)
+		left := max(al, bl)
+		right := min(ar, br)
+		if left < right {
+			// TODO:
+			// Check links outside of the box.
+			if left == 0 {
+				return []Pos{a, {X: -1, Y: a.Y}, {X: -1, Y: b.Y}, b}
+			}
+			if right == g.W-1 {
+				return []Pos{a, {X: g.H, Y: a.Y}, {X: g.H, Y: b.Y}, b}
+			}
+		}
+	}
+
+	return nil
 }
 
 func main() {
